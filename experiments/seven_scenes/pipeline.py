@@ -2,7 +2,7 @@ import os
 from os import path as osp
 from tqdm import tqdm
 import torch
-from experiments.service.benchmark_base import Benchmark
+from service.benchmark_base import Benchmark
 from relposenet.dataset import SevenScenesTestDataset
 from relposenet.augmentations import get_augmentations
 from relposenet.model import RelPoseNet

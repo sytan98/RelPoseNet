@@ -1,12 +1,12 @@
 pipeline: Relative Camera Pose Estimation pipeline
 defaults:
-  - experiment: 7scenes
+  - experiment: airsim 
   - model: relposenet
 paths:
-  work_dir: /data/projects/RelPoseNet
-  datasets_home_dir: /ssd/data
+  work_dir: D:/Imperial/FYP/new/RelPoseNet
+  # datasets_home_dir: D:/Imperial/FYP/captured_data/airsim_drone_mode/building_v4
   output_home_dir: ${paths.work_dir}/output
-  snapshots_dir: ${paths.work_dir}/data/snapshots
+  snapshots_dir: ${paths.work_dir}/output/snapshots
 hydra:
   run:
     dir: ${paths.output_home_dir}
