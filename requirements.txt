@@ -12,7 +12,7 @@ certifi==2020.11.8
 cffi==1.14.4
 chardet==3.0.4
 ConfigArgParse==1.2.3
-cupy-cuda102==8.0.0
+cupy-cuda102==8.5.0
 cycler==0.10.0
 decorator==4.4.2
 defusedxml==0.6.0
@@ -49,31 +49,31 @@ kiwisolver==1.2.0
 kornia==0.4.1
 Markdown==3.3.3
 MarkupSafe==1.1.1
-matplotlib==3.3.2
+matplotlib
 mistune==0.8.4
-mkl-fft==1.2.0
-mkl-random==1.1.1
-mkl-service==2.3.0
+mkl-fft==1.3.1
+mkl-random==1.2.2
+mkl-service==2.4.0
 nbclient==0.5.1
 nbconvert==6.0.7
 nbformat==5.0.8
 nest-asyncio==1.4.3
 networkx==2.5
 notebook==6.1.5
-numpy @ file:///tmp/build/80754af9/numpy_and_numpy_base_1596233707986/work
+numpy 
 nvidia-ml-py3==7.352.0
 oauthlib==3.1.0
 olefile==0.46
 omegaconf==2.0.5
-opencv-contrib-python==3.4.2.17
-opencv-python==3.4.2.17
+opencv-contrib-python==3.4.11.45
+opencv-python==3.4.11.45
 opencv-python-headless==4.4.0.46
 packaging==20.8
 pandocfilters==1.4.3
 parso==0.7.1
 pexpect==4.8.0
 pickleshare==0.7.5
-Pillow @ file:///tmp/build/80754af9/pillow_1594307325547/work
+Pillow==9.1.0
 prometheus-client==0.9.0
 prompt-toolkit==3.0.8
 protobuf==3.13.0
@@ -96,9 +96,9 @@ QtPy==1.9.0
 requests==2.24.0
 requests-oauthlib==1.3.0
 rsa==4.6
-scikit-image==0.17.2
-scikit-learn==0.23.2
-scipy==1.5.2
+scikit-image
+scikit-learn
+scipy
 Send2Trash==1.5.0
 Shapely==1.7.1
 six==1.15.0
@@ -109,8 +109,8 @@ terminado==0.9.1
 testpath==0.4.4
 threadpoolctl==2.1.0
 tifffile==2020.10.1
-torch==1.6.0
-torchvision==0.7.0
+torch
+torchvision
 tornado==6.1
 tqdm==4.50.2
 traitlets==5.0.5
@@ -121,4 +121,3 @@ webencodings==0.5.1
 Werkzeug==1.0.1
 widgetsnbextension==3.5.1
 zipp==3.4.0
-faiss==1.6.3
