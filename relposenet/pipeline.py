@@ -24,7 +24,7 @@ class PipelineBase(ABC):
 
         # initialize dataloaders
         self.train_loader, self.val_loader = self._init_dataloaders()
-        self.train_loader_iterator = iter(cycle(self.train_loader))
+        self.train_loader_iterator = iter(self.train_loader)
 
         if self.cfg_model_mode == "accel":
             self.model = RelPoseNetWithAccel(cfg_model).to(self.device)
@@ -52,7 +52,7 @@ class PipelineBase(ABC):
         # create writer (logger)
         self.writer = SummaryWriter(self.cfg.output_params.logger_dir)
 
-        self.start_step = 0
+        self.start_epoch = 0
         self.val_total_loss = 1e6
         if self.cfg.model_params.resume_snapshot:
             self._load_model(self.cfg.model_params.resume_snapshot)
@@ -65,14 +65,14 @@ class PipelineBase(ABC):
     def _predict_cam_pose(self, mini_batch):
         pass
 
-    def _save_model(self, step, loss_val, best_val=False):
+    def _save_model(self, epoch, loss_val, best_val=False):
         if not osp.exists(self.cfg.output_params.snapshot_dir):
             os.makedirs(self.cfg.output_params.snapshot_dir)
 
-        fname_out = 'best_val.pth' if best_val else 'snapshot{:06d}.pth'.format(step)
+        fname_out = 'best_val.pth' if best_val else 'snapshot{:06d}.pth'.format(epoch)
         save_path = osp.join(self.cfg.output_params.snapshot_dir, fname_out)
         model_state = self.model.state_dict()
-        torch.save({'step': step,
+        torch.save({'epoch': epoch,
                     'state_dict': model_state,
                     'optimizer': self.optimizer.state_dict(),
                     'scheduler': self.scheduler.state_dict(),
@@ -85,7 +85,7 @@ class PipelineBase(ABC):
         self.model.load_state_dict(data_dict['state_dict'])
         self.optimizer.load_state_dict(data_dict['optimizer'])
         self.scheduler.load_state_dict(data_dict['scheduler'])
-        self.start_step = data_dict['step']
+        self.start_epoch = data_dict['epoch']
         if 'val_loss' in data_dict:
             self.val_total_loss = data_dict['val_loss']
 
@@ -135,8 +135,7 @@ class PipelineWithNormal(PipelineBase):
                                           mini_batch['img2'].to(self.device))
         return q_est, t_est
     
-    def _train_batch(self):
-        train_sample = next(self.train_loader_iterator)
+    def _train_batch(self, train_sample):
         q_est, t_est = self._predict_cam_pose(train_sample)
 
         self.optimizer.zero_grad()
@@ -180,31 +179,34 @@ class PipelineWithNormal(PipelineBase):
         return avg_total_loss, avg_t_loss, avg_q_loss
 
     def run(self):
-        print('Start training', self.start_step)
+        print('Start normal model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for step in range(self.start_step + 1, self.start_step + self.cfg.train_params.n_train_iters):
-            train_loss_batch, _, _ = self._train_batch()
+        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
+            print("epoch", epoch)
+            running_loss = 0.0
+            for step, train_sample in enumerate(self.train_loader):
+                train_loss_batch, _, _,  = self._train_batch(train_sample)
+                running_loss += train_loss_batch
 
-            if step % self.cfg.output_params.log_scalar_interval == 0 and step > 0:
-                self.writer.add_scalar('Train_total_loss_batch', train_loss_batch, step)
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} iterations: '
-                      f'{(time.time() - train_log_iter_time) / 60.}')
+            if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
+                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                    f'{(time.time() - train_log_iter_time) / 60.}')
                 train_log_iter_time = time.time()
-                print(f'Step {step} out of {self.cfg.train_params.n_train_iters} is done. Train loss (per batch): '
-                      f'{train_loss_batch}.')
+                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
 
-            if step % self.cfg.output_params.validate_interval == 0 and step > 0:
+            if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, step)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, step)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, step)
+                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
-                self._save_model(step, val_total_loss, best_val=best_val)
+                self._save_model(epoch, val_total_loss, best_val=best_val)
                 print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
                 print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
                 train_log_iter_time = time.time()
@@ -247,8 +249,7 @@ class PipelineWithAccel(PipelineBase):
                                           mini_batch['imu'].to(self.device))
         return q_est, t_est, t_imu_est
     
-    def _train_batch(self):
-        train_sample = next(self.train_loader_iterator)
+    def _train_batch(self, train_sample):
         q_est, t_est, t_imu_est = self._predict_cam_pose(train_sample)
 
         self.optimizer.zero_grad()
@@ -298,32 +299,35 @@ class PipelineWithAccel(PipelineBase):
         return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss
 
     def run(self):
-        print('Start Accel model training', self.start_step)
+        print('Start Accel model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for step in range(self.start_step + 1, self.start_step + self.cfg.train_params.n_train_iters):
-            train_loss_batch, _, _, _ = self._train_batch()
+        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
+            print("epoch", epoch)
+            running_loss = 0.0
+            for step, train_sample in enumerate(self.train_loader):
+                train_loss_batch, _, _, _ = self._train_batch(train_sample)
+                running_loss += train_loss_batch
 
-            if step % self.cfg.output_params.log_scalar_interval == 0 and step > 0:
-                self.writer.add_scalar('Train_total_loss_batch', train_loss_batch, step)
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} iterations: '
-                      f'{(time.time() - train_log_iter_time) / 60.}')
+            if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
+                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                    f'{(time.time() - train_log_iter_time) / 60.}')
                 train_log_iter_time = time.time()
-                print(f'Step {step} out of {self.cfg.train_params.n_train_iters} is done. Train loss (per batch): '
-                      f'{train_loss_batch}.')
+                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
 
-            if step % self.cfg.output_params.validate_interval == 0 and step > 0:
+            if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, step)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, step)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, step)
-                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, step)
+                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
-                self._save_model(step, val_total_loss, best_val=best_val)
+                self._save_model(epoch, val_total_loss, best_val=best_val)
                 print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}')
                 print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
                 train_log_iter_time = time.time()
@@ -366,8 +370,7 @@ class PipelineWithIMU(PipelineBase):
                                           mini_batch['imu'].to(self.device))
         return q_est, t_est, q_imu_est, t_imu_est
 
-    def _train_batch(self):
-        train_sample = next(self.train_loader_iterator)
+    def _train_batch(self, train_sample):
         q_est, t_est, q_imu_est, t_imu_est = self._predict_cam_pose(train_sample)
 
         self.optimizer.zero_grad()
@@ -421,35 +424,38 @@ class PipelineWithIMU(PipelineBase):
         self.model.train()
 
         return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_q_imu_loss
-
+    
     def run(self):
-        print('Start IMU model training', self.start_step)
+        print('Start imu model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for step in range(self.start_step + 1, self.start_step + self.cfg.train_params.n_train_iters):
-            train_loss_batch, _, _, _, _ = self._train_batch()
+        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
+            print("epoch", epoch)
+            running_loss = 0.0
+            for step, train_sample in enumerate(self.train_loader):
+                train_loss_batch, _, _, _, _ = self._train_batch()
+                running_loss += train_loss_batch
 
-            if step % self.cfg.output_params.log_scalar_interval == 0 and step > 0:
-                self.writer.add_scalar('Train_total_loss_batch', train_loss_batch, step)
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} iterations: '
-                      f'{(time.time() - train_log_iter_time) / 60.}')
+            if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
+                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                    f'{(time.time() - train_log_iter_time) / 60.}')
                 train_log_iter_time = time.time()
-                print(f'Step {step} out of {self.cfg.train_params.n_train_iters} is done. Train loss (per batch): '
-                      f'{train_loss_batch}.')
+                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
 
-            if step % self.cfg.output_params.validate_interval == 0 and step > 0:
+            if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, step)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, step)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, step)
-                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, step)
-                self.writer.add_scalar('Val_q_imu_loss', val_q_imu_loss, step)
+                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
+                self.writer.add_scalar('Val_q_imu_loss', val_q_imu_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
-                self._save_model(step, val_total_loss, best_val=best_val)
+                self._save_model(epoch, val_total_loss, best_val=best_val)
                 print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}, q_imu_loss: {val_q_imu_loss}')
                 print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
                 train_log_iter_time = time.time()
