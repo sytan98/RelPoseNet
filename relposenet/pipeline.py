@@ -433,7 +433,7 @@ class PipelineWithIMU(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, _, _, _, _ = self._train_batch()
+                train_loss_batch, _, _, _, _ = self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
