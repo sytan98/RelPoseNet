@@ -42,7 +42,7 @@ class RelPoseNetWithAccel(nn.Module):
         self.imu_features = 7
 
         self.backbone, self.concat_layer = self._get_backbone()
-        self.net_imu_fc = nn.Linear(self.imu_features, 50)
+        self.net_imu_fc = nn.Linear(self.imu_features, 10)
         self.concat_img_imu_layer = nn.Linear(self.net_imu_fc.out_features + self.concat_layer.out_features, 
                                               self.net_imu_fc.out_features + self.concat_layer.out_features)
 
@@ -71,11 +71,11 @@ class RelPoseNetWithAccel(nn.Module):
         feat3 = self.net_imu_fc(x3)
 
         feat = torch.cat((feat1, feat2), 1)
+        intermediate_fc_output = self.concat_layer(feat)
+        q_est = self.net_q_fc(self.dropout(intermediate_fc_output))
+        t_est = self.net_t_fc(self.dropout(intermediate_fc_output))
 
-        q_est = self.net_q_fc(self.dropout(self.concat_layer(feat)))
-        t_est = self.net_t_fc(self.dropout(self.concat_layer(feat)))
-
-        feat_with_accel = torch.cat((feat3, feat), 1)
+        feat_with_accel = torch.cat((feat3, intermediate_fc_output), 1)
         t_imu_est = self.net_t_imu_fc(self.dropout(feat_with_accel))
         return q_est, t_est, t_imu_est
 
@@ -86,7 +86,7 @@ class RelPoseNetWithIMU(nn.Module):
         self.imu_features = 10
 
         self.backbone, self.concat_layer = self._get_backbone()
-        self.net_imu_fc = nn.Linear(self.imu_features, 50)
+        self.net_imu_fc = nn.Linear(self.imu_features, 10)
         self.concat_img_imu_layer = nn.Linear(self.net_imu_fc.out_features + self.concat_layer.out_features, 
                                               self.net_imu_fc.out_features + self.concat_layer.out_features)
 
@@ -116,11 +116,11 @@ class RelPoseNetWithIMU(nn.Module):
         feat3 = self.net_imu_fc(x3)
 
         feat = torch.cat((feat1, feat2), 1)
+        intermediate_fc_output = self.concat_layer(feat)
+        q_est = self.net_q_fc(self.dropout(intermediate_fc_output))
+        t_est = self.net_t_fc(self.dropout(intermediate_fc_output))
 
-        q_est = self.net_q_fc(self.dropout(self.concat_layer(feat)))
-        t_est = self.net_t_fc(self.dropout(self.concat_layer(feat)))
-
-        feat_with_accel = torch.cat((feat3, feat), 1)
+        feat_with_accel = torch.cat((feat3, intermediate_fc_output), 1)
         t_imu_est = self.net_t_imu_fc(self.dropout(feat_with_accel))
         q_imu_est = self.net_q_imu_fc(self.dropout(feat_with_accel))
         return q_est, t_est, q_imu_est, t_imu_est

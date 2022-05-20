@@ -3,7 +3,7 @@ from os import path as osp
 from collections import defaultdict
 from PIL import Image
 import torch
-from typing import Literal
+from typing_extensions import Literal
 
 ############################ Train Set ########################################
 airsim_config = Literal["normal", "accel", "imu"]
