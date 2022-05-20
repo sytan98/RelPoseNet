@@ -201,6 +201,7 @@ class PipelineWithNormal(PipelineBase):
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 if val_total_loss < self.val_total_loss:
@@ -321,6 +322,7 @@ class PipelineWithAccel(PipelineBase):
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
@@ -448,6 +450,7 @@ class PipelineWithIMU(PipelineBase):
                 best_val = False
                 val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
