@@ -12,6 +12,8 @@ train_params:
   bs: 10
   lr: 1e-3
   alpha: 1
+  pose_weight: 1
+  imu_weight: 1
   n_workers: 0
   n_train_iters: 125000 # 42k is the size of our training dataset 'db_all_med_hard_train.txt'
   epoch: 10

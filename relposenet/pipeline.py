@@ -29,11 +29,11 @@ class PipelineBase(ABC):
         if self.cfg_model_mode == "accel":
             self.model = RelPoseNetWithAccel(cfg_model).to(self.device)
             # Criterion
-            self.criterion = RelPoseCriterionWithAccel(self.cfg.train_params.alpha).to(self.device)
+            self.criterion = RelPoseCriterionWithAccel(self.cfg.train_params.alpha, self.cfg.train_params.pose_weight, self.cfg.train_params.imu_weight).to(self.device)
         elif self.cfg_model_mode == "imu":
             self.model = RelPoseNetWithIMU(cfg_model).to(self.device)
             # Criterion
-            self.criterion = RelPoseCriterionWithIMU(self.cfg.train_params.alpha).to(self.device)
+            self.criterion = RelPoseCriterionWithIMU(self.cfg.train_params.alpha, self.cfg.train_params.pose_weight, self.cfg.train_params.imu_weight).to(self.device)
         else:
             self.model = RelPoseNet(cfg_model).to(self.device)
             # Criterion
