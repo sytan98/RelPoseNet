@@ -186,7 +186,7 @@ class PipelineWithNormal(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, _, _,  = self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss,  = self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
@@ -195,6 +195,8 @@ class PipelineWithNormal(PipelineBase):
                 train_log_iter_time = time.time()
                 print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
                 self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
@@ -307,7 +309,7 @@ class PipelineWithAccel(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, _, _, _ = self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss, t_imu_loss= self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
@@ -316,6 +318,9 @@ class PipelineWithAccel(PipelineBase):
                 train_log_iter_time = time.time()
                 print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
                 self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
@@ -435,7 +440,7 @@ class PipelineWithIMU(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, _, _, _, _ = self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss, t_imu_loss, q_imu_loss = self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0 and epoch > 0:
@@ -444,6 +449,10 @@ class PipelineWithIMU(PipelineBase):
                 train_log_iter_time = time.time()
                 print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
                 self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
+                self.writer.add_scalar('Train_q_imu_loss', q_imu_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0 and epoch > 0:
                 val_time = time.time()
