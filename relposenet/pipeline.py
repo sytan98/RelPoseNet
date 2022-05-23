@@ -164,7 +164,7 @@ class PipelineWithNormal(PipelineBase):
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total, t_mse_loss_total, q_mse_loss_total = 0.
+        loss_total = t_loss_total = q_loss_total = t_mse_loss_total = q_mse_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
@@ -293,7 +293,7 @@ class PipelineWithAccel(PipelineBase):
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total, t_imu_loss_total, t_mse_loss_total, q_mse_loss_total, t_mse_imu_loss_total = 0.
+        loss_total = t_loss_total = q_loss_total = t_imu_loss_total = t_mse_loss_total = q_mse_loss_total = t_mse_imu_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
@@ -434,7 +434,7 @@ class PipelineWithIMU(PipelineBase):
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total, t_imu_loss_total, q_imu_loss_total, t_mse_loss_total, q_mse_loss_total, t_mse_imu_loss_total, q_mse_imu_loss_total = 0.
+        loss_total = t_loss_total = q_loss_total = t_imu_loss_total = q_imu_loss_total = t_mse_loss_total = q_mse_loss_total = t_mse_imu_loss_total = q_mse_imu_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
