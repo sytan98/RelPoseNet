@@ -41,3 +41,16 @@ def obtain_absolute_pose(absolute_pose_c2, relative_pose):
 	r1 = R.from_matrix(np.matmul(rot_mat2,np.linalg.inv(rot_mat_rel))).as_quat()
 	r1 = np.hstack([r1[3:], r1[:3]])
 	return t1, r1
+
+def cal_quat_angle_error(label, pred):
+    if len(label.shape) == 1:
+        label = np.expand_dims(label, axis=0)
+    if len(pred.shape) == 1:
+        pred = np.expand_dims(pred, axis=0)
+    q1 = pred / np.linalg.norm(pred, axis=1, keepdims=True)
+    q2 = label / np.linalg.norm(label, axis=1, keepdims=True)
+    d = np.abs(np.sum(np.multiply(q1,q2), axis=1, keepdims=True)) # Here we have abs()
+
+    d = np.clip(d, a_min=-1, a_max=1)
+    error = 2 * np.degrees(np.arccos(d))
+    return error

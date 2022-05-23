@@ -1,5 +1,6 @@
 import os
 from os import path as osp
+import numpy as np
 import time
 from tqdm import tqdm
 import torch
@@ -10,7 +11,7 @@ from relposenet.model import RelPoseNet
 from relposenet.dataset import AirSimRelPoseDataset 
 from relposenet.augmentations import get_augmentations
 from relposenet.criterion import RelPoseCriterion
-from relposenet.utils import cycle, set_seed
+from relposenet.utils import cycle, set_seed, cal_quat_angle_error
 from abc import ABC, abstractmethod 
 
 class PipelineBase(ABC):
@@ -165,6 +166,8 @@ class PipelineWithNormal(PipelineBase):
     def _validate(self):
         self.model.eval()
         loss_total = t_loss_total = q_loss_total = t_mse_loss_total = q_mse_loss_total = 0.
+        pos_err = []
+        ori_err = []
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
@@ -179,6 +182,14 @@ class PipelineWithNormal(PipelineBase):
                 q_loss_total += q_loss_val
                 t_mse_loss_total += t_mse_loss_val
                 q_mse_loss_total += q_mse_loss_val
+                
+                t_err = np.linalg.norm(t_est.cpu().numpy() - val_sample['t_gt'].numpy(), axis=1)
+                q_err = cal_quat_angle_error(q_est.cpu().numpy(), val_sample['q_gt'].numpy())
+                pos_err += list(t_err)
+                ori_err += list(q_err)
+
+        err = (np.median(pos_err), np.median(ori_err))
+        print(f'Accuracy: ({err[0]:.2f}m, {err[1]:.2f}deg)')    
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
