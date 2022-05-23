@@ -29,16 +29,24 @@ class PipelineBase(ABC):
         if self.cfg_model_mode == "accel":
             self.model = RelPoseNetWithAccel(cfg_model).to(self.device)
             # Criterion
-            self.criterion = RelPoseCriterionWithAccel(self.cfg.train_params.alpha, self.cfg.train_params.pose_weight, self.cfg.train_params.imu_weight).to(self.device)
+            self.criterion = RelPoseCriterionWithAccel(self.cfg.train_params.alpha, 
+                                                       self.cfg.train_params.pose_weight, 
+                                                       self.cfg.train_params.imu_weight, 
+                                                       self.cfg.train_params.loss).to(self.device)
         elif self.cfg_model_mode == "imu":
             self.model = RelPoseNetWithIMU(cfg_model).to(self.device)
             # Criterion
-            self.criterion = RelPoseCriterionWithIMU(self.cfg.train_params.alpha, self.cfg.train_params.pose_weight, self.cfg.train_params.imu_weight).to(self.device)
+            self.criterion = RelPoseCriterionWithIMU(self.cfg.train_params.alpha, 
+                                                     self.cfg.train_params.pose_weight, 
+                                                     self.cfg.train_params.imu_weight, 
+                                                     self.cfg.train_params.loss).to(self.device)
         else:
             self.model = RelPoseNet(cfg_model).to(self.device)
             # Criterion
-            self.criterion = RelPoseCriterion(self.cfg.train_params.alpha).to(self.device)
+            self.criterion = RelPoseCriterion(self.cfg.train_params.alpha, 
+                                              self.cfg.train_params.loss).to(self.device)
 
+        print(self.model)
         # Optimizer
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=self.cfg.train_params.lr)
@@ -141,10 +149,10 @@ class PipelineWithNormal(PipelineBase):
         self.optimizer.zero_grad()
 
         # compute loss
-        loss, t_loss_val, q_loss_val = self.criterion(train_sample['q_gt'].to(self.device),
-                                                      train_sample['t_gt'].to(self.device),
-                                                      q_est,
-                                                      t_est)
+        loss, t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val = self.criterion(train_sample['q_gt'].to(self.device),
+                                                                                      train_sample['t_gt'].to(self.device),
+                                                                                      q_est,
+                                                                                      t_est)
         loss.backward()
 
         # update the optimizer
@@ -152,31 +160,35 @@ class PipelineWithNormal(PipelineBase):
 
         # update the scheduler
         self.scheduler.step()
-        return loss.item(), t_loss_val, q_loss_val
+        return loss.item(), t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total = 0., 0., 0.
+        loss_total, t_loss_total, q_loss_total, t_mse_loss_total, q_mse_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
                 q_est, t_est = self._predict_cam_pose(val_sample)
                 # compute loss
-                loss, t_loss_val, q_loss_val = self.criterion(val_sample['q_gt'].to(self.device),
-                                                              val_sample['t_gt'].to(self.device),
-                                                              q_est,
-                                                              t_est)
+                loss, t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val = self.criterion(val_sample['q_gt'].to(self.device),
+                                                                                      val_sample['t_gt'].to(self.device),
+                                                                                      q_est,
+                                                                                      t_est)
                 loss_total += loss.item()
                 t_loss_total += t_loss_val
                 q_loss_total += q_loss_val
+                t_mse_loss_total += t_mse_loss_val
+                q_mse_loss_total += q_mse_loss_val
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
         avg_q_loss = q_loss_total / len(self.val_loader)
+        avg_t_mse_loss = t_mse_loss_total / len(self.val_loader)
+        avg_q_mse_loss = q_mse_loss_total / len(self.val_loader)
 
         self.model.train()
 
-        return avg_total_loss, avg_t_loss, avg_q_loss
+        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_mse_loss, avg_q_mse_loss
 
     def run(self):
         print('Start normal model training', self.start_epoch)
@@ -186,7 +198,7 @@ class PipelineWithNormal(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss,  = self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss,  = self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0:
@@ -197,15 +209,19 @@ class PipelineWithNormal(PipelineBase):
                 self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
                 self.writer.add_scalar('Train_t_loss', t_loss, epoch)
                 self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0:
                 val_time = time.time()
                 best_val = False
-                val_total_loss, val_t_loss, val_q_loss = self._validate()
+                val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
                 self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
@@ -258,12 +274,14 @@ class PipelineWithAccel(PipelineBase):
         self.optimizer.zero_grad()
 
         # compute loss
-        loss, t_loss_val, q_loss_val, t_imu_loss_val = self.criterion(train_sample['q_gt'].to(self.device),
-                                                                      train_sample['t_gt'].to(self.device),
-                                                                      train_sample['t_imu_gt'].to(self.device),
-                                                                      q_est,
-                                                                      t_est,
-                                                                      t_imu_est)
+        losses = self.criterion(train_sample['q_gt'].to(self.device),
+                                train_sample['t_gt'].to(self.device),
+                                train_sample['t_imu_gt'].to(self.device),
+                                q_est,
+                                t_est,
+                                t_imu_est)
+
+        loss, t_loss_val, q_loss_val, t_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val = losses
         loss.backward()
 
         # update the optimizer
@@ -271,35 +289,42 @@ class PipelineWithAccel(PipelineBase):
 
         # update the scheduler
         self.scheduler.step()
-        return loss.item(), t_loss_val, q_loss_val, t_imu_loss_val
+        return loss.item(), t_loss_val, q_loss_val, t_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total, t_imu_loss_total = 0., 0., 0., 0.
+        loss_total, t_loss_total, q_loss_total, t_imu_loss_total, t_mse_loss_total, q_mse_loss_total, t_mse_imu_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
                 q_est, t_est, t_imu_est = self._predict_cam_pose(val_sample)
                 # compute loss
-                loss, t_loss_val, q_loss_val, t_imu_loss_val = self.criterion(val_sample['q_gt'].to(self.device),
-                                                                              val_sample['t_gt'].to(self.device),
-                                                                              val_sample['t_imu_gt'].to(self.device),
-                                                                              q_est,
-                                                                              t_est,
-                                                                              t_imu_est)
+                losses = self.criterion(val_sample['q_gt'].to(self.device),
+                                        val_sample['t_gt'].to(self.device),
+                                        val_sample['t_imu_gt'].to(self.device),
+                                        q_est,
+                                        t_est,
+                                        t_imu_est)
+                loss, t_loss_val, q_loss_val, t_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val = losses
                 loss_total += loss.item()
                 t_loss_total += t_loss_val
                 q_loss_total += q_loss_val
                 t_imu_loss_total += t_imu_loss_val
+                t_mse_loss_total += t_mse_loss_val
+                q_mse_loss_total += q_mse_loss_val
+                t_mse_imu_loss_total += t_mse_imu_loss_val
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
         avg_q_loss = q_loss_total / len(self.val_loader)
         avg_t_imu_loss = t_imu_loss_total / len(self.val_loader)
+        avg_t_mse_loss = t_mse_loss_total / len(self.val_loader)
+        avg_q_mse_loss = q_mse_loss_total / len(self.val_loader)
+        avg_t_mse_imu_loss = t_mse_imu_loss_total / len(self.val_loader)
 
         self.model.train()
 
-        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss
+        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_t_mse_loss, avg_q_mse_loss, avg_t_mse_imu_loss
 
     def run(self):
         print('Start Accel model training', self.start_epoch)
@@ -309,7 +334,7 @@ class PipelineWithAccel(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss, t_imu_loss= self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss, t_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss= self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0:
@@ -321,16 +346,22 @@ class PipelineWithAccel(PipelineBase):
                 self.writer.add_scalar('Train_t_loss', t_loss, epoch)
                 self.writer.add_scalar('Train_q_loss', q_loss, epoch)
                 self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
+                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0:
                 val_time = time.time()
                 best_val = False
-                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss = self._validate()
+                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
                 self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
+                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
@@ -383,14 +414,15 @@ class PipelineWithIMU(PipelineBase):
         self.optimizer.zero_grad()
 
         # compute loss
-        loss, t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val = self.criterion(train_sample['q_gt'].to(self.device),
-                                                                                      train_sample['t_gt'].to(self.device),
-                                                                                      train_sample['q_imu_gt'].to(self.device),
-                                                                                      train_sample['t_imu_gt'].to(self.device),
-                                                                                      q_est,
-                                                                                      t_est,
-                                                                                      q_imu_est,
-                                                                                      t_imu_est)
+        losses= self.criterion(train_sample['q_gt'].to(self.device),
+                               train_sample['t_gt'].to(self.device),
+                               train_sample['q_imu_gt'].to(self.device),
+                               train_sample['t_imu_gt'].to(self.device),
+                               q_est,
+                               t_est,
+                               q_imu_est,
+                               t_imu_est)
+        loss, t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val, q_mse_imu_loss_val = losses
         loss.backward()
 
         # update the optimizer
@@ -398,39 +430,48 @@ class PipelineWithIMU(PipelineBase):
 
         # update the scheduler
         self.scheduler.step()
-        return loss.item(), t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val
+        return loss.item(), t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val, q_mse_imu_loss_val
 
     def _validate(self):
         self.model.eval()
-        loss_total, t_loss_total, q_loss_total, t_imu_loss_total, q_imu_loss_total = 0., 0., 0., 0., 0.
+        loss_total, t_loss_total, q_loss_total, t_imu_loss_total, q_imu_loss_total, t_mse_loss_total, q_mse_loss_total, t_mse_imu_loss_total, q_mse_imu_loss_total = 0.
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
                 q_est, t_est, q_imu_est, t_imu_est = self._predict_cam_pose(val_sample)
                 # compute loss
-                loss, t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val = self.criterion(val_sample['q_gt'].to(self.device),
-                                                                                              val_sample['t_gt'].to(self.device),
-                                                                                              val_sample['q_imu_gt'].to(self.device),
-                                                                                              val_sample['t_imu_gt'].to(self.device),
-                                                                                              q_est,
-                                                                                              t_est,
-                                                                                              q_imu_est,
-                                                                                              t_imu_est)
+                losses = self.criterion(val_sample['q_gt'].to(self.device),
+                                        val_sample['t_gt'].to(self.device),
+                                        val_sample['q_imu_gt'].to(self.device),
+                                        val_sample['t_imu_gt'].to(self.device),
+                                        q_est,
+                                        t_est,
+                                        q_imu_est,
+                                        t_imu_est)
+                loss, t_loss_val, q_loss_val, t_imu_loss_val, q_imu_loss_val, t_mse_loss_val, q_mse_loss_val, t_mse_imu_loss_val, q_mse_imu_loss_val = losses
                 loss_total += loss.item()
                 t_loss_total += t_loss_val
                 q_loss_total += q_loss_val
                 t_imu_loss_total += t_imu_loss_val
                 q_imu_loss_total += q_imu_loss_val
+                t_mse_loss_total += t_mse_loss_val
+                q_mse_loss_total += q_mse_loss_val
+                t_mse_imu_loss_total += t_mse_imu_loss_val
+                q_mse_imu_loss_total += q_mse_imu_loss_val
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
         avg_q_loss = q_loss_total / len(self.val_loader)
         avg_t_imu_loss = t_imu_loss_total / len(self.val_loader)
         avg_q_imu_loss = q_imu_loss_total / len(self.val_loader)
+        avg_t_mse_loss = t_mse_loss_total / len(self.val_loader)
+        avg_q_mse_loss = q_mse_loss_total / len(self.val_loader)
+        avg_t_mse_imu_loss = t_mse_imu_loss_total / len(self.val_loader)
+        avg_q_mse_imu_loss = q_mse_imu_loss_total / len(self.val_loader)
 
         self.model.train()
 
-        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_q_imu_loss
+        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_q_imu_loss, avg_t_mse_loss, avg_q_mse_loss, avg_t_mse_imu_loss, avg_q_mse_imu_loss
     
     def run(self):
         print('Start imu model training', self.start_epoch)
@@ -440,7 +481,7 @@ class PipelineWithIMU(PipelineBase):
             print("epoch", epoch)
             running_loss = 0.0
             for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss, t_imu_loss, q_imu_loss = self._train_batch(train_sample)
+                train_loss_batch, t_loss, q_loss, t_imu_loss, q_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss, q_mse_imu_loss = self._train_batch(train_sample)
                 running_loss += train_loss_batch
 
             if epoch % self.cfg.output_params.log_scalar_interval == 0:
@@ -453,17 +494,25 @@ class PipelineWithIMU(PipelineBase):
                 self.writer.add_scalar('Train_q_loss', q_loss, epoch)
                 self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
                 self.writer.add_scalar('Train_q_imu_loss', q_imu_loss, epoch)
+                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
+                self.writer.add_scalar('Train_q_mse_imu_loss', q_mse_imu_loss, epoch)
 
             if epoch % self.cfg.output_params.validate_interval == 0:
                 val_time = time.time()
                 best_val = False
-                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss = self._validate()
+                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss, val_q_mse_imu_loss = self._validate()
                 self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
                 self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                 self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                 self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
                 self.writer.add_scalar('Val_q_imu_loss', val_q_imu_loss, epoch)
+                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
+                self.writer.add_scalar('Val_q_mse_imu_loss', val_q_mse_imu_loss, epoch)
                 if val_total_loss < self.val_total_loss:
                     self.val_total_loss = val_total_loss
                     best_val = True
