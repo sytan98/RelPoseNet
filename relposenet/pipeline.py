@@ -1,3 +1,4 @@
+from logging import raiseExceptions
 import os
 from os import path as osp
 import numpy as np
@@ -205,48 +206,56 @@ class PipelineWithNormal(PipelineBase):
         return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_mse_loss, avg_q_mse_loss
 
     def run(self):
-        print('Start normal model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
-            print("epoch", epoch)
-            running_loss = 0.0
-            for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss,  = self._train_batch(train_sample)
-                running_loss += train_loss_batch
+        if self.cfg.mode == "train":
+            print('Start normal model training', self.start_epoch)
+            for epoch in range(self.start_epoch, self.cfg.train_params.epoch + 1):
+                print("epoch", epoch)
+                running_loss = 0.0
+                for step, train_sample in enumerate(self.train_loader):
+                    train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss,  = self._train_batch(train_sample)
+                    running_loss += train_loss_batch
 
-            if epoch % self.cfg.output_params.log_scalar_interval == 0:
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
-                    f'{(time.time() - train_log_iter_time) / 60.}')
-                train_log_iter_time = time.time()
-                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
-                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
-                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
-                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
-                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
-                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                if epoch % self.cfg.output_params.log_scalar_interval == 0:
+                    print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                        f'{(time.time() - train_log_iter_time) / 60.}')
+                    train_log_iter_time = time.time()
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                    self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                    self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                    self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                    self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
 
-            if epoch % self.cfg.output_params.validate_interval == 0:
-                val_time = time.time()
-                best_val = False
-                val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
-                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
-                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
-                if val_total_loss < self.val_total_loss:
-                    self.val_total_loss = val_total_loss
-                    best_val = True
-                self._save_model(epoch, val_total_loss, best_val=best_val)
-                print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
-                print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
-                train_log_iter_time = time.time()
+                if epoch % self.cfg.output_params.validate_interval == 0:
+                    val_time = time.time()
+                    best_val = False
+                    val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
+                    self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                    self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                    self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                    self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                    if val_total_loss < self.val_total_loss:
+                        self.val_total_loss = val_total_loss
+                        best_val = True
+                    self._save_model(epoch, val_total_loss, best_val=best_val)
+                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+                    print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+                    train_log_iter_time = time.time()
 
-        print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
-        print('Done')
-
+            print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
+            print('Done')
+        elif self.cfg.mode == "val":
+            print('Start normal model evaluation')
+            val_time = time.time()
+            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+        else:
+            raise ValueError("No such mode")
 class PipelineWithAccel(PipelineBase):
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -350,51 +359,60 @@ class PipelineWithAccel(PipelineBase):
         return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_t_mse_loss, avg_q_mse_loss, avg_t_mse_imu_loss
 
     def run(self):
-        print('Start Accel model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
-            print("epoch", epoch)
-            running_loss = 0.0
-            for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss, t_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss= self._train_batch(train_sample)
-                running_loss += train_loss_batch
+        if self.cfg.mode == "train":
+            print('Start Accel model training', self.start_epoch)
+            for epoch in range(self.start_epoch, self.cfg.train_params.epoch + 1):
+                print("epoch", epoch)
+                running_loss = 0.0
+                for step, train_sample in enumerate(self.train_loader):
+                    train_loss_batch, t_loss, q_loss, t_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss= self._train_batch(train_sample)
+                    running_loss += train_loss_batch
 
-            if epoch % self.cfg.output_params.log_scalar_interval == 0:
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
-                    f'{(time.time() - train_log_iter_time) / 60.}')
-                train_log_iter_time = time.time()
-                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
-                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
-                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
-                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
-                self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
-                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
-                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
-                self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
+                if epoch % self.cfg.output_params.log_scalar_interval == 0:
+                    print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                        f'{(time.time() - train_log_iter_time) / 60.}')
+                    train_log_iter_time = time.time()
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                    self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                    self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                    self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                    self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                    self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
 
-            if epoch % self.cfg.output_params.validate_interval == 0:
-                val_time = time.time()
-                best_val = False
-                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
-                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
-                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
-                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
-                self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
-                if val_total_loss < self.val_total_loss:
-                    self.val_total_loss = val_total_loss
-                    best_val = True
-                self._save_model(epoch, val_total_loss, best_val=best_val)
-                print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}')
-                print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
-                train_log_iter_time = time.time()
+                if epoch % self.cfg.output_params.validate_interval == 0:
+                    val_time = time.time()
+                    best_val = False
+                    val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss = self._validate()
+                    self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                    self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                    self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                    self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
+                    if val_total_loss < self.val_total_loss:
+                        self.val_total_loss = val_total_loss
+                        best_val = True
+                    self._save_model(epoch, val_total_loss, best_val=best_val)
+                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}')
+                    print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+                    train_log_iter_time = time.time()
 
-        print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
-        print('Done')
+            print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
+            print('Done')
+        elif self.cfg.mode == "val":
+            print('Start accel model evaluation')
+            val_time = time.time()
+            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+        else:
+            raise ValueError("No such mode")
 
 class PipelineWithIMU(PipelineBase):
     def __init__(self, cfg):
@@ -505,52 +523,61 @@ class PipelineWithIMU(PipelineBase):
         return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_imu_loss, avg_q_imu_loss, avg_t_mse_loss, avg_q_mse_loss, avg_t_mse_imu_loss, avg_q_mse_imu_loss
     
     def run(self):
-        print('Start imu model training', self.start_epoch)
         train_start_time = time.time()
         train_log_iter_time = time.time()
-        for epoch in range(self.start_epoch, self.cfg.train_params.epoch):
-            print("epoch", epoch)
-            running_loss = 0.0
-            for step, train_sample in enumerate(self.train_loader):
-                train_loss_batch, t_loss, q_loss, t_imu_loss, q_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss, q_mse_imu_loss = self._train_batch(train_sample)
-                running_loss += train_loss_batch
+        if self.cfg.mode == "train":
+            print('Start imu model training', self.start_epoch)
+            for epoch in range(self.start_epoch, self.cfg.train_params.epoch + 1):
+                print("epoch", epoch)
+                running_loss = 0.0
+                for step, train_sample in enumerate(self.train_loader):
+                    train_loss_batch, t_loss, q_loss, t_imu_loss, q_imu_loss, t_mse_loss, q_mse_loss, t_mse_imu_loss, q_mse_imu_loss = self._train_batch(train_sample)
+                    running_loss += train_loss_batch
 
-            if epoch % self.cfg.output_params.log_scalar_interval == 0:
-                print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
-                    f'{(time.time() - train_log_iter_time) / 60.}')
-                train_log_iter_time = time.time()
-                print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
-                self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
-                self.writer.add_scalar('Train_t_loss', t_loss, epoch)
-                self.writer.add_scalar('Train_q_loss', q_loss, epoch)
-                self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
-                self.writer.add_scalar('Train_q_imu_loss', q_imu_loss, epoch)
-                self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
-                self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
-                self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
-                self.writer.add_scalar('Train_q_mse_imu_loss', q_mse_imu_loss, epoch)
+                if epoch % self.cfg.output_params.log_scalar_interval == 0:
+                    print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                        f'{(time.time() - train_log_iter_time) / 60.}')
+                    train_log_iter_time = time.time()
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                    self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                    self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                    self.writer.add_scalar('Train_q_loss', q_loss, epoch)
+                    self.writer.add_scalar('Train_t_imu_loss', t_imu_loss, epoch)
+                    self.writer.add_scalar('Train_q_imu_loss', q_imu_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+                    self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_imu_loss', t_mse_imu_loss, epoch)
+                    self.writer.add_scalar('Train_q_mse_imu_loss', q_mse_imu_loss, epoch)
 
-            if epoch % self.cfg.output_params.validate_interval == 0:
-                val_time = time.time()
-                best_val = False
-                val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss, val_q_mse_imu_loss = self._validate()
-                self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
-                self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
-                self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
-                self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
-                self.writer.add_scalar('Val_q_imu_loss', val_q_imu_loss, epoch)
-                self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
-                self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
-                self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
-                self.writer.add_scalar('Val_q_mse_imu_loss', val_q_mse_imu_loss, epoch)
-                if val_total_loss < self.val_total_loss:
-                    self.val_total_loss = val_total_loss
-                    best_val = True
-                self._save_model(epoch, val_total_loss, best_val=best_val)
-                print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}, q_imu_loss: {val_q_imu_loss}')
-                print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
-                train_log_iter_time = time.time()
+                if epoch % self.cfg.output_params.validate_interval == 0:
+                    val_time = time.time()
+                    best_val = False
+                    val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss, val_q_mse_imu_loss = self._validate()
+                    self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                    self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                    self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
+                    self.writer.add_scalar('Val_t_imu_loss', val_t_imu_loss, epoch)
+                    self.writer.add_scalar('Val_q_imu_loss', val_q_imu_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                    self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_imu_loss', val_t_mse_imu_loss, epoch)
+                    self.writer.add_scalar('Val_q_mse_imu_loss', val_q_mse_imu_loss, epoch)
+                    if val_total_loss < self.val_total_loss:
+                        self.val_total_loss = val_total_loss
+                        best_val = True
+                    self._save_model(epoch, val_total_loss, best_val=best_val)
+                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}, q_imu_loss: {val_q_imu_loss}')
+                    print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+                    train_log_iter_time = time.time()
 
-        print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
-        print('Done')
+            print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
+            print('Done')
+        elif self.cfg.mode == "val":
+            print('Start imu model evaluation')
+            val_time = time.time()
+            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+        else:
+            raise ValueError("No such mode")
