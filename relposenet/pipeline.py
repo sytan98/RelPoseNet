@@ -408,8 +408,8 @@ class PipelineWithAccel(PipelineBase):
         elif self.cfg.mode == "val":
             print('Start accel model evaluation')
             val_time = time.time()
-            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
-            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}')
             print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
         else:
             raise ValueError("No such mode")
@@ -576,8 +576,8 @@ class PipelineWithIMU(PipelineBase):
         elif self.cfg.mode == "val":
             print('Start imu model evaluation')
             val_time = time.time()
-            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
-            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            val_total_loss, val_t_loss, val_q_loss, val_t_imu_loss, val_q_imu_loss, val_t_mse_loss, val_q_mse_loss, val_t_mse_imu_loss, val_q_mse_imu_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, t_imu_loss: {val_t_imu_loss}, q_imu_loss: {val_q_imu_loss}')
             print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
         else:
             raise ValueError("No such mode")
