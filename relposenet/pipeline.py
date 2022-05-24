@@ -305,6 +305,7 @@ class PipelineWithAccel(PipelineBase):
     def _validate(self):
         self.model.eval()
         loss_total = t_loss_total = q_loss_total = t_imu_loss_total = t_mse_loss_total = q_mse_loss_total = t_mse_imu_loss_total = 0.
+        pos_err, ori_err = [], []
 
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
@@ -324,6 +325,14 @@ class PipelineWithAccel(PipelineBase):
                 t_mse_loss_total += t_mse_loss_val
                 q_mse_loss_total += q_mse_loss_val
                 t_mse_imu_loss_total += t_mse_imu_loss_val
+
+                t_err = np.linalg.norm(t_est.cpu().numpy() - val_sample['t_gt'].numpy(), axis=1)
+                q_err = cal_quat_angle_error(q_est.cpu().numpy(), val_sample['q_gt'].numpy())
+                pos_err += list(t_err)
+                ori_err += list(q_err)
+
+        err = (np.median(pos_err), np.median(ori_err))
+        print(f'Accuracy: ({err[0]:.2f}m, {err[1]:.2f}deg)')   
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
@@ -446,7 +455,7 @@ class PipelineWithIMU(PipelineBase):
     def _validate(self):
         self.model.eval()
         loss_total = t_loss_total = q_loss_total = t_imu_loss_total = q_imu_loss_total = t_mse_loss_total = q_mse_loss_total = t_mse_imu_loss_total = q_mse_imu_loss_total = 0.
-
+        pos_err, ori_err = [], []
         with torch.no_grad():
             for val_sample in tqdm(self.val_loader):
                 q_est, t_est, q_imu_est, t_imu_est = self._predict_cam_pose(val_sample)
@@ -469,6 +478,14 @@ class PipelineWithIMU(PipelineBase):
                 q_mse_loss_total += q_mse_loss_val
                 t_mse_imu_loss_total += t_mse_imu_loss_val
                 q_mse_imu_loss_total += q_mse_imu_loss_val
+
+                t_err = np.linalg.norm(t_est.cpu().numpy() - val_sample['t_gt'].numpy(), axis=1)
+                q_err = cal_quat_angle_error(q_est.cpu().numpy(), val_sample['q_gt'].numpy())
+                pos_err += list(t_err)
+                ori_err += list(q_err)
+
+        err = (np.median(pos_err), np.median(ori_err))
+        print(f'Accuracy: ({err[0]:.2f}m, {err[1]:.2f}deg)')   
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
