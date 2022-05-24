@@ -5,7 +5,7 @@ import time
 from tqdm import tqdm
 import torch
 from relposenet.criterion import RelPoseCriterionWithAccel, RelPoseCriterionWithIMU
-from relposenet.model import RelPoseNetWithAccel, RelPoseNetWithIMU
+from relposenet.model import RelPoseNetLarger, RelPoseNetWithAccel, RelPoseNetWithIMU
 from tensorboardX import SummaryWriter
 from relposenet.model import RelPoseNet
 from relposenet.dataset import AirSimRelPoseDataset 
@@ -42,7 +42,10 @@ class PipelineBase(ABC):
                                                      self.cfg.train_params.imu_weight, 
                                                      self.cfg.train_params.loss).to(self.device)
         else:
-            self.model = RelPoseNet(cfg_model).to(self.device)
+            if self.cfg.model_size == "large":
+                self.model = RelPoseNetLarger(cfg_model).to(self.device)
+            else:
+                self.model = RelPoseNet(cfg_model).to(self.device)
             # Criterion
             self.criterion = RelPoseCriterion(self.cfg.train_params.alpha, 
                                               self.cfg.train_params.loss).to(self.device)
