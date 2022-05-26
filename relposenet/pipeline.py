@@ -164,7 +164,7 @@ class PipelineWithNormal(PipelineBase):
         self.optimizer.step()
 
         # update the scheduler
-        self.scheduler.step()
+        # self.scheduler.step()
         return loss.item(), t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val
 
     def _validate(self):
@@ -216,6 +216,7 @@ class PipelineWithNormal(PipelineBase):
                 for step, train_sample in enumerate(self.train_loader):
                     train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss,  = self._train_batch(train_sample)
                     running_loss += train_loss_batch
+                self.scheduler.step()
 
                 if epoch % self.cfg.output_params.log_scalar_interval == 0:
                     print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
