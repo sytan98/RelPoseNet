@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import torch
+import rowan
 from scipy.spatial.transform import Rotation as R
 
 def set_seed(seed):
@@ -10,7 +11,6 @@ def set_seed(seed):
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-
 
 def cycle(iterable):
     while True:
@@ -41,6 +41,36 @@ def obtain_absolute_pose(absolute_pose_c2, relative_pose):
 	r1 = R.from_matrix(np.matmul(rot_mat2,np.linalg.inv(rot_mat_rel))).as_quat()
 	r1 = np.hstack([r1[3:], r1[:3]])
 	return t1, r1
+
+def calc_rel_orientation(q0, q1):
+    vos_q = rowan.multiply(rowan.inverse(q0), q1)
+    return vos_q
+
+def calc_abs_orientation(q0, q_rel):
+    vos_q = rowan.multiply(q0, q_rel)
+    return vos_q
+
+def calc_rel_pose(p0, p1):
+    """
+    calculates VO (in the world frame) from 2 poses
+    :param p0: N x 7
+    :param p1: N x 7
+    """
+    # print(p0, p1)
+    vos_t = p1[:3] - p0[:3]
+    vos_q = calc_rel_orientation(p0[3:], p1[3:])
+    return np.concatenate((vos_t, vos_q))
+
+def calc_abs_pose(p0, p_rel):
+    """
+    calculates VO (in the world frame) from 2 poses
+    :param p0: N x 7
+    :param p1: N x 7
+    """
+    # print(p0, p1)
+    vos_t = p_rel[:3] + p0[:3]
+    vos_q = calc_abs_orientation(p0[3:], p_rel[3:])
+    return np.concatenate((vos_t, vos_q))
 
 def cal_quat_angle_error(label, pred):
     if len(label.shape) == 1:

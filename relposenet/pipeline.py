@@ -221,7 +221,7 @@ class PipelineWithNormal(PipelineBase):
                     print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
                         f'{(time.time() - train_log_iter_time) / 60.}')
                     train_log_iter_time = time.time()
-                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}')
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}, current lr {self.scheduler.get_last_lr()}')
                     self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
                     self.writer.add_scalar('Train_t_loss', t_loss, epoch)
                     self.writer.add_scalar('Train_q_loss', q_loss, epoch)
@@ -242,7 +242,7 @@ class PipelineWithNormal(PipelineBase):
                         self.val_total_loss = val_total_loss
                         best_val = True
                     self._save_model(epoch, val_total_loss, best_val=best_val)
-                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, current lr {self.scheduler.get_last_lr()}')
                     print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
                     train_log_iter_time = time.time()
 
