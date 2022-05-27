@@ -22,6 +22,20 @@ class RelPoseCriterion(nn.Module, ABC):
         return loss_total, t_loss.item(), q_loss.item(), \
             t_mse_loss.item(), q_mse_loss.item()
 
+class RelPoseCriterionDebug(nn.Module, ABC):
+    def __init__(self, alpha=1, loss="mse"):
+        super().__init__()
+        self.alpha = alpha
+        self.t_mse_loss = nn.MSELoss()
+        self.t_loss = nn.MSELoss() if loss == "mse" else nn.L1Loss()
+
+    def forward(self, t_gt, t_est):
+        t_loss = self.t_loss(t_est, t_gt)
+
+        t_mse_loss = self.t_mse_loss(t_est, t_gt)
+
+        loss_total = t_loss 
+        return loss_total, t_loss.item(),t_mse_loss.item() 
 
 class RelPoseCriterionWithAccel(nn.Module, ABC):
     def __init__(self, alpha=1, pose_weight=1, imu_weight=1, loss="mse"):

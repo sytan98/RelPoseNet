@@ -1,5 +1,5 @@
 import hydra
-from relposenet.pipeline import PipelineWithAccel, PipelineWithIMU, PipelineWithNormal
+from relposenet.pipeline import PipelineWithAccel, PipelineWithDebug, PipelineWithIMU, PipelineWithNormal
 
 @hydra.main(config_path="configs", config_name="main")
 def main(cfg):
@@ -7,6 +7,8 @@ def main(cfg):
         pipeline = PipelineWithAccel(cfg)
     elif cfg.model_mode == "imu":
         pipeline = PipelineWithIMU(cfg)
+    elif cfg.model_mode == "normal_debug":
+        pipeline = PipelineWithDebug(cfg)
     else:
         pipeline = PipelineWithNormal(cfg)
     pipeline.run()

@@ -5,8 +5,8 @@ import numpy as np
 import time
 from tqdm import tqdm
 import torch
-from relposenet.criterion import RelPoseCriterionWithAccel, RelPoseCriterionWithIMU
-from relposenet.model import RelPoseNetLarger, RelPoseNetWithAccel, RelPoseNetWithIMU
+from relposenet.criterion import RelPoseCriterionDebug, RelPoseCriterionWithAccel, RelPoseCriterionWithIMU
+from relposenet.model import RelPoseNetLarger, RelPoseNetWithAccel, RelPoseNetWithIMU, RelPoseNetWithSingleOutput
 from tensorboardX import SummaryWriter
 from relposenet.model import RelPoseNet
 from relposenet.dataset import AirSimRelPoseDataset 
@@ -42,6 +42,11 @@ class PipelineBase(ABC):
                                                      self.cfg.train_params.pose_weight, 
                                                      self.cfg.train_params.imu_weight, 
                                                      self.cfg.train_params.loss).to(self.device)
+        elif self.cfg_model_mode == "normal_debug":
+            self.model = RelPoseNetWithSingleOutput(cfg_model).to(self.device)
+            # Criterion
+            self.criterion = RelPoseCriterionDebug(self.cfg.train_params.alpha, 
+                                                    self.cfg.train_params.loss).to(self.device)
         else:
             if self.cfg.model_size == "large":
                 self.model = RelPoseNetLarger(cfg_model).to(self.device)
@@ -114,6 +119,133 @@ class PipelineBase(ABC):
     def run(self):
         pass
 
+class PipelineWithDebug(PipelineBase):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+    
+    def _init_dataloaders(self):
+        cfg_train = self.cfg.train_params
+
+        # get image augmentations
+        train_augs, val_augs = get_augmentations()
+
+        train_dataset = AirSimRelPoseDataset(cfg=self.cfg, airsim_config="normal_debug", split='train', transforms=train_augs)
+
+        val_dataset = AirSimRelPoseDataset(cfg=self.cfg, airsim_config="normal_debug", split='val', transforms=val_augs)
+
+        train_loader = torch.utils.data.DataLoader(train_dataset,
+                                                   batch_size=cfg_train.bs,
+                                                   shuffle=True,
+                                                   pin_memory=True,
+                                                   num_workers=cfg_train.n_workers,
+                                                   drop_last=True)
+
+        val_loader = torch.utils.data.DataLoader(val_dataset,
+                                                 batch_size=cfg_train.bs,
+                                                 shuffle=False,
+                                                 pin_memory=True,
+                                                 num_workers=cfg_train.n_workers,
+                                                 drop_last=False)
+        return train_loader, val_loader
+    
+    def _predict_cam_pose(self, mini_batch):
+        t_est = self.model.forward(mini_batch['img1'].to(self.device),
+                                    mini_batch['img2'].to(self.device))
+        return t_est
+    
+    def _train_batch(self, train_sample):
+        t_est = self._predict_cam_pose(train_sample)
+
+        self.optimizer.zero_grad()
+
+        # compute loss
+        loss, t_loss_val, t_mse_loss_val = self.criterion(train_sample['t_gt'].to(self.device),t_est)
+        loss.backward()
+
+        # update the optimizer
+        self.optimizer.step()
+
+        # update the scheduler
+        # self.scheduler.step()
+        return loss.item(), t_loss_val, t_mse_loss_val
+
+    def _validate(self):
+        self.model.eval()
+        loss_total = t_loss_total  = t_mse_loss_total = 0.
+        pos_err = []
+        ori_err = []
+
+        with torch.no_grad():
+            for val_sample in tqdm(self.val_loader):
+                t_est = self._predict_cam_pose(val_sample)
+                # compute loss
+                loss, t_loss_val, t_mse_loss_val = self.criterion(val_sample['t_gt'].to(self.device), t_est)
+                loss_total += loss.item()
+                t_loss_total += t_mse_loss_val
+                t_mse_loss_total += t_mse_loss_val
+                
+                t_err = np.linalg.norm(t_est.cpu().numpy() - val_sample['t_gt'].numpy(), axis=1)
+                pos_err += list(t_err)
+
+        err = np.median(pos_err)
+        print(f'Accuracy: ({err:.2f}m)')    
+
+        avg_total_loss = loss_total / len(self.val_loader)
+        avg_t_loss = t_loss_total / len(self.val_loader)
+        avg_t_mse_loss = t_mse_loss_total / len(self.val_loader)
+
+        self.model.train()
+
+        return avg_total_loss, avg_t_loss, avg_t_mse_loss
+
+    def run(self):
+        train_start_time = time.time()
+        train_log_iter_time = time.time()
+        if self.cfg.mode == "train":
+            print('Start normal debug model training', self.start_epoch)
+            for epoch in range(self.start_epoch, self.cfg.train_params.epoch + 1):
+                print("epoch", epoch)
+                running_loss = 0.0
+                for step, train_sample in enumerate(self.train_loader):
+                    train_loss_batch, t_loss, t_mse_loss  = self._train_batch(train_sample)
+                    running_loss += train_loss_batch
+                self.scheduler.step()
+
+                if epoch % self.cfg.output_params.log_scalar_interval == 0:
+                    print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
+                        f'{(time.time() - train_log_iter_time) / 60.}')
+                    train_log_iter_time = time.time()
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}, current lr {self.scheduler.get_last_lr()}')
+                    self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
+                    self.writer.add_scalar('Train_t_loss', t_loss, epoch)
+                    self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
+
+                if epoch % self.cfg.output_params.validate_interval == 0:
+                    val_time = time.time()
+                    best_val = False
+                    val_total_loss, val_t_loss, val_t_mse_loss = self._validate()
+                    self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
+                    self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
+                    self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
+                    if val_total_loss < self.val_total_loss:
+                        self.val_total_loss = val_total_loss
+                        best_val = True
+                    self._save_model(epoch, val_total_loss, best_val=best_val)
+                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, current lr {self.scheduler.get_last_lr()}')
+                    print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+                    train_log_iter_time = time.time()
+
+            print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
+            print('Done')
+        elif self.cfg.mode == "val":
+            print('Start normal model evaluation')
+            val_time = time.time()
+            val_total_loss, val_t_loss, val_t_mse_loss = self._validate()
+            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}')
+            print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
+        else:
+            raise ValueError("No such mode")
+
 class PipelineWithNormal(PipelineBase):
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -140,7 +272,7 @@ class PipelineWithNormal(PipelineBase):
                                                  shuffle=False,
                                                  pin_memory=True,
                                                  num_workers=cfg_train.n_workers,
-                                                 drop_last=True)
+                                                 drop_last=False)
         return train_loader, val_loader
     
     def _predict_cam_pose(self, mini_batch):
