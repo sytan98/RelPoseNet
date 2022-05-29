@@ -44,6 +44,8 @@ class AirSimRelPoseDataset(object):
         return fnames1, fnames2, imu_input_accel, imu_input, t_gt, q_gt, t_imu_gt, q_imu_gt
 
     def __getitem__(self, item):
+        if self.split == "val":
+            print(f"images{self.fnames1[item]} {self.fnames2[item]}")
         img1 = Image.open(self.fnames1[item]).convert('RGB')
         img2 = Image.open(self.fnames2[item]).convert('RGB')
         imu_input_accel = self.imu_input_accel[item]

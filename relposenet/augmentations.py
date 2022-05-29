@@ -13,12 +13,13 @@ def get_augmentations():
 
 
 def train_augmentations():
-    mean, std = get_imagenet_mean_std()
-    transform = transforms.Compose([transforms.Resize(size=256),
-                                    transforms.RandomCrop(size=224),
-                                    transforms.ColorJitter(brightness=0.4,
-                                                           contrast=0.4,
-                                                           saturation=0.4),
+    # mean, std = get_imagenet_mean_std()
+    mean, std = [0.7208, 0.6812, 0.6156], [0.2159, 0.2165, 0.2228]
+    transform = transforms.Compose([transforms.Resize(size=224),
+                                    transforms.CenterCrop(size=224),
+                                    # transforms.ColorJitter(brightness=0.4,
+                                    #                        contrast=0.4,
+                                    #                        saturation=0.4),
                                     transforms.ToTensor(),
                                     transforms.Normalize(mean, std)
                                     ])
@@ -27,8 +28,9 @@ def train_augmentations():
 
 
 def eval_augmentations():
-    mean, std = get_imagenet_mean_std()
-    transform = transforms.Compose([transforms.Resize(size=256),
+    # mean, std = get_imagenet_mean_std()
+    mean, std = [0.7208, 0.6812, 0.6156], [0.2159, 0.2165, 0.2228]
+    transform = transforms.Compose([transforms.Resize(size=224),
                                     transforms.CenterCrop(size=224),
                                     transforms.ToTensor(),
                                     transforms.Normalize(mean, std)
