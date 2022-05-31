@@ -42,7 +42,7 @@ class RelPoseNetWithSingleOutput(nn.Module):
         self.backbone, self.concat_layer = self._get_backbone()
         self.fc_layer2 = nn.Linear(self.concat_layer.in_features, self.concat_layer.in_features)
         self.fc_layer3 = nn.Linear(self.concat_layer.in_features, self.concat_layer.in_features)
-        self.net_t_fc = nn.Linear(self.concat_layer.in_features, 1)
+        self.net_t_fc = nn.Linear(self.concat_layer.in_features, 3)
         self.relu_activation = nn.ReLU()
 
     def _get_backbone(self):
