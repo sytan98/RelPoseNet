@@ -226,7 +226,7 @@ def get_conv_block(
 class MeNet(nn.Module):
     def __init__(self, outputs) -> None:
         super().__init__()
-
+        self.output_count = outputs
         self.conv_encoder = nn.Sequential(
             *get_conv_block(6, 16, 7, 2, 3),
             *get_conv_block(16, 32, 5, 2, 2),
@@ -260,4 +260,7 @@ class MeNet(nn.Module):
         output = output.view(-1, output.size()[1] * output.size()[2] * output.size()[3])
         output = self.linear_encoder(output)
 
-        return output
+        if self.output_count < 7:
+            return output
+        else:
+            return output[:, :4], output[:, 4:]

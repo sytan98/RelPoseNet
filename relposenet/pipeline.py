@@ -43,7 +43,7 @@ class PipelineBase(ABC):
                                                      self.cfg.train_params.imu_weight, 
                                                      self.cfg.train_params.loss).to(self.device)
         elif self.cfg_model_mode == "normal_debug":
-            self.model = MeNet(1).to(self.device)
+            self.model = MeNet(3).to(self.device)
             # Criterion
             self.criterion = RelPoseCriterionDebug(self.cfg.train_params.alpha, 
                                                     self.cfg.train_params.loss).to(self.device)
@@ -51,7 +51,7 @@ class PipelineBase(ABC):
             if self.cfg.model_size == "large":
                 self.model = RelPoseNetLarger(cfg_model).to(self.device)
             else:
-                self.model = RelPoseNet(cfg_model).to(self.device)
+                self.model = MeNet(7).to(self.device)
             # Criterion
             self.criterion = RelPoseCriterion(self.cfg.train_params.alpha, 
                                               self.cfg.train_params.loss).to(self.device)
@@ -249,7 +249,7 @@ class PipelineWithDebug(PipelineBase):
             print(f'Elapsed time for training [min] {(time.time() - train_start_time) / 60.}')
             print('Done')
         elif self.cfg.mode == "val":
-            print('Start normal model evaluation')
+            print('Start normal debug model evaluation')
             val_time = time.time()
             val_total_loss, val_t_loss, val_t_mse_loss, mean_err = self._validate()
             print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}')
@@ -308,8 +308,8 @@ class PipelineWithNormal(PipelineBase):
 
         # update the scheduler
         # self.scheduler.step()
-        return loss.item(), t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val
-
+        return loss.item(), t_loss_val, q_loss_val, t_mse_loss_val, q_mse_loss_val, t_est, q_est
+        
     def _validate(self):
         self.model.eval()
         loss_total = t_loss_total = q_loss_total = t_mse_loss_total = q_mse_loss_total = 0.
@@ -336,7 +336,8 @@ class PipelineWithNormal(PipelineBase):
                 ori_err += list(q_err)
 
         err = (np.median(pos_err), np.median(ori_err))
-        print(f'Accuracy: ({err[0]:.2f}m, {err[1]:.2f}deg)')    
+        mean_err = (np.mean(pos_err), np.mean(ori_err))
+        print(f'Median Accuracy: ({err[0]:.2f}m, {err[1]:.2f}deg)')    
 
         avg_total_loss = loss_total / len(self.val_loader)
         avg_t_loss = t_loss_total / len(self.val_loader)
@@ -346,7 +347,7 @@ class PipelineWithNormal(PipelineBase):
 
         self.model.train()
 
-        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_mse_loss, avg_q_mse_loss
+        return avg_total_loss, avg_t_loss, avg_q_loss, avg_t_mse_loss, avg_q_mse_loss, mean_err[0], mean_err[1]
 
     def run(self):
         train_start_time = time.time()
@@ -356,37 +357,49 @@ class PipelineWithNormal(PipelineBase):
             for epoch in range(self.start_epoch, self.cfg.train_params.epoch + 1):
                 print("epoch", epoch)
                 running_loss = 0.0
+                train_pos_err, train_ori_err = [], []
                 for step, train_sample in enumerate(self.train_loader):
-                    train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss,  = self._train_batch(train_sample)
+                    train_loss_batch, t_loss, q_loss, t_mse_loss, q_mse_loss, t_est, q_est  = self._train_batch(train_sample)
                     running_loss += train_loss_batch
+                    t_err = np.linalg.norm(t_est.detach().cpu().numpy() - train_sample['t_gt'].numpy(), axis=1)
+                    q_err = cal_quat_angle_error(q_est.detach().cpu().numpy(), train_sample['q_gt'].numpy())
+                    train_pos_err += list(t_err)
+                    train_ori_err += list(q_err)
+
+                mean_pos_err = np.mean(train_pos_err)
+                mean_ori_err = np.mean(train_ori_err)
                 self.scheduler.step()
 
                 if epoch % self.cfg.output_params.log_scalar_interval == 0:
                     print(f'Elapsed time [min] for {self.cfg.output_params.log_scalar_interval} epochs: '
                         f'{(time.time() - train_log_iter_time) / 60.}')
                     train_log_iter_time = time.time()
-                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}, current lr {self.scheduler.get_last_lr()}')
+                    print(f'Epoch {epoch}, Train_total_loss {running_loss/len(self.train_loader)}, Train_t_accuracy {mean_pos_err}, Train_q_accuracy {mean_ori_err}, current lr {self.scheduler.get_last_lr()}')
                     self.writer.add_scalar('Train_total_loss_batch', running_loss/len(self.train_loader), epoch)
                     self.writer.add_scalar('Train_t_loss', t_loss, epoch)
                     self.writer.add_scalar('Train_q_loss', q_loss, epoch)
                     self.writer.add_scalar('Train_t_mse_loss', t_mse_loss, epoch)
                     self.writer.add_scalar('Train_q_mse_loss', q_mse_loss, epoch)
+                    self.writer.add_scalar('Train_t_accuracy', mean_pos_err, epoch)
+                    self.writer.add_scalar('Train_q_accuracy', mean_ori_err, epoch)
 
                 if epoch % self.cfg.output_params.validate_interval == 0:
                     val_time = time.time()
                     best_val = False
-                    val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
+                    val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss, mean_pos_err, mean_ori_err = self._validate()
                     self.writer.add_scalar('Val_total_loss', val_total_loss, epoch)
                     self.writer.add_scalar('Val_total_true_pose_loss', val_t_loss + val_q_loss, epoch)
                     self.writer.add_scalar('Val_t_loss', val_t_loss, epoch)
                     self.writer.add_scalar('Val_q_loss', val_q_loss, epoch)
                     self.writer.add_scalar('Val_t_mse_loss', val_t_mse_loss, epoch)
                     self.writer.add_scalar('Val_q_mse_loss', val_q_mse_loss, epoch)
+                    self.writer.add_scalar('Val_t_accuracy', mean_pos_err, epoch)
+                    self.writer.add_scalar('Val_q_accuracy', mean_ori_err, epoch)
                     if val_total_loss < self.val_total_loss:
                         self.val_total_loss = val_total_loss
                         best_val = True
                     self._save_model(epoch, val_total_loss, best_val=best_val)
-                    print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}, current lr {self.scheduler.get_last_lr()}')
+                    print(f'Validation loss: {val_total_loss}, val_t_accuracy {mean_pos_err}, val_q_accuracy {mean_ori_err}, t_loss: {val_t_loss}, current lr {self.scheduler.get_last_lr()}')
                     print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
                     train_log_iter_time = time.time()
 
@@ -395,8 +408,8 @@ class PipelineWithNormal(PipelineBase):
         elif self.cfg.mode == "val":
             print('Start normal model evaluation')
             val_time = time.time()
-            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss = self._validate()
-            print(f'Validation loss: {val_total_loss}, t_loss: {val_t_loss}, q_loss: {val_q_loss}')
+            val_total_loss, val_t_loss, val_q_loss, val_t_mse_loss, val_q_mse_loss, mean_pos_err, mean_ori_err = self._validate()
+            print(f'Validation loss: {val_total_loss}, val_t_accuracy {mean_pos_err}, val_q_accuracy {mean_ori_err}, t_loss: {val_t_loss}')
             print(f'Elapsed time [min] for validation: {(time.time() - val_time) / 60.}')
         else:
             raise ValueError("No such mode")

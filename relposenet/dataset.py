@@ -71,14 +71,10 @@ class AirSimRelPoseDataset(object):
                     't_gt': t_gt,
                     'q_gt': q_gt}
         elif self.airsim_config == "normal_debug":
-            # randomly flip images in an image pair
-            if random.uniform(0, 1) > 0.5 and self.split == "train":
-                img1, img2 = img2, img1
-                t_gt = -self.t_gt[item]
-                q_gt = torch.FloatTensor([q_gt[0], -q_gt[1], -q_gt[2], -q_gt[3]])
             return {'img1': img1,
                     'img2': img2,
-                    't_gt': torch.unsqueeze(t_gt[1], 0 )}
+                    # 't_gt': torch.unsqueeze(t_gt[1], 0 )}
+                    't_gt': t_gt}
         elif self.airsim_config == "accel":
             return {'img1': img1,
                     'img2': img2,
